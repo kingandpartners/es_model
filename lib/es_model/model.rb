@@ -1,6 +1,7 @@
 require "ostruct"
 require "active_support"
 require "active_support/core_ext/hash/reverse_merge"
+require "faraday_middleware/aws_sigv4"
 
 class EsModel::Model < OpenStruct
 
@@ -207,7 +208,32 @@ class EsModel::Model < OpenStruct
   end
 
   def self.elasticsearch
-    @elasticsearch ||= Elasticsearch::Client.new(url: ENV.fetch('ES_URL'))
+    @elasticsearch ||= begin
+      Elasticsearch::Client.new(url: ENV.fetch('ES_URL')) do |f|
+        if ENV.fetch('AWS_REGION', nil)
+          f.request :aws_sigv4,
+            service: 'es',
+            region: ENV.fetch('AWS_REGION'),
+            access_key_id: ENV.fetch('AWS_ACCESS_KEY_ID'),
+            secret_access_key: ENV.fetch('AWS_SECRET_ACCESS_KEY')
+        end
+      end
+    end
+  end
+
+  def deep_to_h(obj = nil)
+    obj = obj || self
+    return obj unless obj.is_a?(OpenStruct)
+    obj.to_h.transform_values do |v|
+      case v
+      when OpenStruct
+        deep_to_h(v)
+      when Array
+        v.map { |val| deep_to_h(val) }
+      else
+        v
+      end
+    end
   end
 
   private

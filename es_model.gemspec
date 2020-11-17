@@ -26,4 +26,5 @@ Gem::Specification.new do |spec|
   spec.require_paths = ["lib"]
   spec.add_dependency "elasticsearch", "~> 6.2"
   spec.add_dependency "activesupport"
+  spec.add_dependency "faraday_middleware-aws-sigv4"
 end
