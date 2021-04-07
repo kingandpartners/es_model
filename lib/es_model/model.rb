@@ -120,6 +120,10 @@ class EsModel::Model < OpenStruct
     params.delete_if { |k,v| !v.present? }
     return [] if !params.present?
     params.merge!(post_status: params.fetch(:post_status, 'publish'))
+    sort = params.delete(:sort)
+    range = params.delete(:range)
+    from = params.delete(:from)
+    size = params.delete(:size) || MAX_RESULTS
 
     params = params.map do |k, v|
       if k.downcase.to_s.include?('id')
@@ -144,13 +148,24 @@ class EsModel::Model < OpenStruct
       )
     end
 
+    must_params = []
     if and_params.any?
-      query[:bool].merge!(must: and_params.map { |k, v| map_param(k, v) })
+      must_params = and_params.map { |k, v| map_param(k, v) }
+    end
+
+    if range
+      must_params.push({range: range})
+    end
+
+    if must_params.any?
+      query[:bool].merge!(must: must_params)
     end
 
     body = { query: query }
 
-    if sort_param.present?
+    if sort
+      body[:sort] = sort
+    elsif sort_param.present?
       key, ids = sort_param
       script = painless_script(key)
       body.merge!(
@@ -170,11 +185,14 @@ class EsModel::Model < OpenStruct
       )
     end
 
-    hits = elasticsearch.search(
+    search_result = elasticsearch.search(
       index: site_index_name,
-      size: MAX_RESULTS,
-      body: body
-    )['hits']['hits']
+      size: size,
+      body: body,
+      from: from.presence || 0
+    )
+
+    hits = search_result['hits']['hits']
 
     hits.map do |data|
       new(data['_source'])
